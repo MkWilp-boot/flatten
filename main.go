@@ -18,11 +18,12 @@ import (
 )
 
 var (
-	outputDirectory = flag.String("x", "output", "output directory")
-	namePrefix      = flag.String("prefix", "", "prefix all entries with the provided value")
-	maxNumCores     = flag.Int("c", runtime.NumCPU(), "set's the maximum number of cores for use")
-	timeExecution   = flag.Bool("time", false, "time program execution")
-	helpFlag        = flag.Bool("h", false, "display available flags and usage")
+	flagOutputDirectory = flag.String("x", "output", "output directory")
+	flagNamePrefix      = flag.String("prefix", "", "prefix all entries with the provided value")
+	flagMaxNumCores     = flag.Int("c", runtime.NumCPU(), "set's the maximum number of cores for use")
+	flagTimeExecution   = flag.Bool("time", false, "time program execution")
+	flagHelp            = flag.Bool("h", false, "display available flags and usage")
+	flagCopy            = flag.Bool("cp", false, "copies every file instead of moving them")
 
 	semaphore chan struct{}
 )
@@ -32,23 +33,23 @@ var pathReplacer = regexp.MustCompile(`[\\\/]`)
 func init() {
 	flag.Parse()
 
-	if *helpFlag {
+	if *flagHelp {
 		flag.PrintDefaults()
 		os.Exit(0)
 	}
 
-	semaphore = make(chan struct{}, *maxNumCores)
+	semaphore = make(chan struct{}, *flagMaxNumCores)
 
-	if *namePrefix != "" && !strings.HasSuffix(*namePrefix, "_") {
-		*namePrefix += "_"
+	if *flagNamePrefix != "" && !strings.HasSuffix(*flagNamePrefix, "_") {
+		*flagNamePrefix += "_"
 	}
 
-	totalCoresAvailable := runtime.GOMAXPROCS(*maxNumCores)
-	log.Printf("[INFO] Using '%d' cores for processing, maximum available is '%d'\n", *maxNumCores, totalCoresAvailable)
+	totalCoresAvailable := runtime.GOMAXPROCS(*flagMaxNumCores)
+	log.Printf("[INFO] Using '%d' cores for processing, maximum available is '%d'\n", *flagMaxNumCores, totalCoresAvailable)
 }
 
 func main() {
-	if *timeExecution {
+	if *flagTimeExecution {
 		timeNow := time.Now()
 		log.Println("[INFO] Requested timed execution")
 
@@ -71,7 +72,7 @@ func main() {
 	totalItems := scoutDirectory(&entries, "")
 	log.Printf("[INFO] Found: '%d' nested items to copy\n", totalItems)
 
-	outputDirEntry, err := os.Stat(*outputDirectory)
+	outputDirEntry, err := os.Stat(*flagOutputDirectory)
 	if outputDirEntry != nil && err != nil {
 		log.Fatal(err)
 	}
@@ -99,7 +100,7 @@ func main() {
 		+------------+------+-------+
 	*/
 	if outputDirEntry == nil {
-		err = os.Mkdir(*outputDirectory, 0666)
+		err = os.Mkdir(*flagOutputDirectory, 0666)
 		if err != nil {
 			log.Println(err)
 			os.Exit(1)
@@ -110,7 +111,7 @@ func main() {
 
 	var wg sync.WaitGroup
 	for _, entry := range entries {
-		if entry.IsDir() && entry.Name() != *outputDirectory {
+		if entry.IsDir() && entry.Name() != *flagOutputDirectory {
 			wg.Add(1)
 			go expandDirectory(bar, &wg, entry.Name())
 		}
@@ -122,7 +123,7 @@ func scoutDirectory(dir *[]fs.DirEntry, parentPath string) (total uint) {
 	total = 0
 	for i := 0; i < len(*dir); i++ {
 		currentDirEntryName := filepath.Join(parentPath, (*dir)[i].Name())
-		if currentDirEntryName == *outputDirectory {
+		if currentDirEntryName == *flagOutputDirectory {
 			continue
 		}
 		dirs, err := os.ReadDir(currentDirEntryName)
@@ -174,7 +175,7 @@ func copyFilesFromSource(bar *progressbar.ProgressBar, wg *sync.WaitGroup, fullP
 	semaphore <- struct{}{}
 	defer func() { <-semaphore }() // Release the "slot" when done
 
-	destName := filepath.Join(*outputDirectory, fmt.Sprintf("%s%s_%s", *namePrefix, pathReplacer.ReplaceAllString(fullPath, "_"), copyingFileName))
+	destName := filepath.Join(*flagOutputDirectory, fmt.Sprintf("%s%s_%s", *flagNamePrefix, pathReplacer.ReplaceAllString(fullPath, "_"), copyingFileName))
 	destFile, err := os.Create(destName)
 	if err != nil {
 		log.Println(err)
